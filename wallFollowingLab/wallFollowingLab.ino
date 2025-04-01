@@ -10,6 +10,11 @@ double priorError = 0.0;
 long prevTime = new Date().getTime();
 
 void setup() {
+  
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
   // put your setup code here, to run once:
 
   // Fetch ultrasonic readings (use code from last lab)
@@ -44,9 +49,4 @@ void setup() {
   // one wheel will be + pidResult, the other will be - pidResult
   // positive or negative pidResult value will determine which
   // direction the robot will turn
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-
 }
