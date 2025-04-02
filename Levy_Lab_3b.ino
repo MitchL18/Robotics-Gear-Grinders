@@ -9,6 +9,7 @@
 using namespace Pololu3piPlus32U4;
 
 Buzzer buzzer;
+Motors motors;
 
 Servo headServo; // create servo object to control a servo
 
@@ -23,12 +24,12 @@ const boolean US_ON = true;
 // Head Servo Timing 
 unsigned long headCm;
 unsigned long headPm;
-const unsigned long HEAD_MOVEMENT_PERIOD = 120;
+const unsigned long HEAD_MOVEMENT_PERIOD = 350;
 
 // head servo constants 
 const int HEAD_SERVO_PIN = 12;
-const int NUM_HEAD_POSITIONS = 5;
-const int HEAD_POSITIONS[NUM_HEAD_POSITIONS] = {150, 120, 90, 60, 30};
+const int NUM_HEAD_POSITIONS = 2;
+const int HEAD_POSITIONS[NUM_HEAD_POSITIONS] = {178, 178}; // was 85
 
 // head servo data
 boolean headDirectionClockwise = false;
@@ -41,7 +42,7 @@ const int TRIG_PIN = 4;
 // Ultrasonic max distance
 const float MAX_DISTANCE = 300.0;
 
-// determine the normalization factorbased on MAX_DISTANCE
+// determine the normalization factor based on MAX_DISTANCE
 const float DISTANCE_FACTOR = MAX_DISTANCE / 100;
 const float STOP_DISTANCE = 5; // don't care about data less than 5cm
 
@@ -55,6 +56,23 @@ boolean usReadFlag = false;                             // ensures 1 reading
 int currentReadPosition = 0;
 
 float distanceReadings[NUM_HEAD_POSITIONS];
+
+// New stuff below:
+
+float distance;
+double previousError;
+
+// desired position
+const double desiredState = (double) 30;
+
+//1.5, 0, 100
+const double kp = 1;
+const double ki = 0;
+const double kd = 4;
+
+double kiTotal = 0.0;
+double priorError = 0.0;
+long prevTime = millis();
 
 void setup() {
   // put your setup code here, to run once:
@@ -77,6 +95,8 @@ void setup() {
   // start delay
   delay(3000);
   buzzer.play("c32");
+
+  motors.setSpeeds(-80, -80);
 }
 
 void loop() {
@@ -87,6 +107,58 @@ void loop() {
 
   // update the current distance
   usReadCm();
+
+  // sideways pid
+  // calculate error
+  double error = desiredState - distance;
+
+  // Proportional correction 
+  // no time multiplier because the rate of the servo turning is constant
+  double proportional = kp * error;
+
+  // ki get integral correction
+  // add error to kiTotal
+  kiTotal += error;
+
+  // calculate integral correction
+  double integral = ki * kiTotal;
+
+  if(integral > 15) {
+    integral = 15;
+  }
+
+  if(integral < -15) {
+    integral = -15;
+  }
+
+  // may have to apply limits on Ki to prevent integral windup
+
+  // derivative is difference between error and the priorError
+  float derivative = kd * (error - previousError);
+  // set previous error for next round
+  previousError = error;
+
+  // Are previousError and priorError the same thing?
+
+  // sum P. I. and D. together
+  float pidResult = proportional + integral + derivative;
+
+  // apply the pid result to the motors
+  // one wheel will be + pidResult, the other will be - pidResult
+  // positive or negative pidResult value will determine which
+  // direction the robot will turn
+  
+  Serial.println("pidResult ");
+  Serial.println(pidResult);
+  motors.setSpeeds(-80 + pidResult, -80 - pidResult);
+
+
+
+
+  //move head
+  //readcm
+
+  //forward pid
 
 }
 
@@ -174,7 +246,7 @@ void usReadCm() {
       // When it goes from HIGH to LOW the timer will end.
       long duration = pulseIn(ECHO_PIN, HIGH, 30000);
       // Calculating the distance
-      float distance = duration * 0.034 / 2; // Time of flight equation: Speed of sound wave divided by 2
+      distance = duration * 0.034 / 2; // Time of flight equation: Speed of sound wave divided by 2
       // We divide by 2 because the sound wave goes out AND comes back
 
       // apply limits
