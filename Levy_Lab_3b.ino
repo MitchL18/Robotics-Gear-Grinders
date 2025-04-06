@@ -24,16 +24,16 @@ const boolean US_ON = true;
 // Head Servo Timing 
 unsigned long headCm;
 unsigned long headPm;
-const unsigned long HEAD_MOVEMENT_PERIOD = 350;
+const unsigned long HEAD_MOVEMENT_PERIOD = 120;
 
 // head servo constants 
 const int HEAD_SERVO_PIN = 12;
-const int NUM_HEAD_POSITIONS = 2;
-const int HEAD_POSITIONS[NUM_HEAD_POSITIONS] = {178, 178}; // was 85
+const int NUM_HEAD_POSITIONS = 6;
+const int HEAD_POSITIONS[NUM_HEAD_POSITIONS] = {178, 178, 178, 85, 85, 85}; 
 
 // head servo data
 boolean headDirectionClockwise = false;
-int currentHeadPosition = 1;
+int currentHeadPosition = 0;
 
 // Initialize Ultrasonic
 const int ECHO_PIN = 5;
@@ -74,6 +74,9 @@ double kiTotal = 0.0;
 double priorError = 0.0;
 long prevTime = millis();
 
+// Threshold for detecting an object in front of the robot
+const float OBJECT_THRESHOLD = 10.0;  // Distance in cm, adjust as needed
+
 void setup() {
   // put your setup code here, to run once:
 
@@ -108,57 +111,78 @@ void loop() {
   // update the current distance
   usReadCm();
 
-  // sideways pid
-  // calculate error
-  double error = desiredState - distance;
+  // Check if there is an object in front
+  bool objectDetected = (distanceReadings[3] < OBJECT_THRESHOLD || distanceReadings[4] < OBJECT_THRESHOLD || distanceReadings[5] < OBJECT_THRESHOLD);
 
-  // Proportional correction 
-  // no time multiplier because the rate of the servo turning is constant
-  double proportional = kp * error;
+  // If there is an object detected, apply object avoidance PID
+  if (objectDetected) {
+    // Object avoidance PID (if there's an object in front)
+    double error = STOP_DISTANCE - distance;  // Distance we want to maintain
+    double proportional = kp * error;
+    kiTotal += error;
+    double integral = ki * kiTotal;
+    if(integral > 15) integral = 15;
+    if(integral < -15) integral = -15;
+    float derivative = kd * (error - previousError);
+    previousError = error;
+    float pidResult = proportional + integral + derivative;
 
-  // ki get integral correction
-  // add error to kiTotal
-  kiTotal += error;
-
-  // calculate integral correction
-  double integral = ki * kiTotal;
-
-  if(integral > 15) {
-    integral = 15;
+    // Apply object avoidance PID result to motors
+    motors.setSpeeds(-80 + pidResult, -80 - pidResult);  // Modify as needed for your avoidance behavior
   }
+  else if (currentHeadPosition < 3) { // do wall following pid
+    // sideways pid
+    // calculate error
+    double error = desiredState - distance;
 
-  if(integral < -15) {
-    integral = -15;
-  }
+    // Proportional correction 
+    // no time multiplier because the rate of the servo turning is constant
+    double proportional = kp * error;
 
-  // may have to apply limits on Ki to prevent integral windup
+    // ki get integral correction
+    // add error to kiTotal
+    kiTotal += error;
 
-  // derivative is difference between error and the priorError
-  float derivative = kd * (error - previousError);
-  // set previous error for next round
-  previousError = error;
+    // calculate integral correction
+    double integral = ki * kiTotal;
 
-  // Are previousError and priorError the same thing?
+    if(integral > 15) {
+      integral = 15;
+    }
 
-  // sum P. I. and D. together
-  float pidResult = proportional + integral + derivative;
+    if(integral < -15) {
+      integral = -15;
+    }
 
-  // apply the pid result to the motors
-  // one wheel will be + pidResult, the other will be - pidResult
-  // positive or negative pidResult value will determine which
-  // direction the robot will turn
+    // may have to apply limits on Ki to prevent integral windup
+
+    // derivative is difference between error and the priorError
+    float derivative = kd * (error - previousError);
+    // set previous error for next round
+    previousError = error;
+
+    // Are previousError and priorError the same thing?
+
+    // sum P. I. and D. together
+    float pidResult = proportional + integral + derivative;
+
+    // apply the pid result to the motors
+    // one wheel will be + pidResult, the other will be - pidResult
+    // positive or negative pidResult value will determine which
+    // direction the robot will turn
   
-  Serial.println("pidResult ");
-  Serial.println(pidResult);
-  motors.setSpeeds(-80 + pidResult, -80 - pidResult);
+    Serial.println("pidResult ");
+    Serial.println(pidResult);
+    motors.setSpeeds(-80 + pidResult, -80 - pidResult);
+
+  }
+  // forward PID
+  else {
+    // If the head is facing forward (positions 3, 4, 5), do nothing for PID correction
+    motors.setSpeeds(-80, -80);  // Continue moving straight backward without correction
+  }
 
 
-
-
-  //move head
-  //readcm
-
-  //forward pid
 
 }
 
@@ -189,25 +213,12 @@ void moveHead() {
 
     /**
      * Set next head position
-     * Moves servo to the next head position and changes direction when needed.
+     * Moves servo to the next head position and goes back to beginning of array when done.
      */
-    if(headDirectionClockwise) {
-      if(currentHeadPosition >= (NUM_HEAD_POSITIONS -1)) {
-        headDirectionClockwise = !headDirectionClockwise;
-        currentHeadPosition--;
-      }
-      else {
-        currentHeadPosition++;
-      }
-    } 
-    else {
-      if(currentHeadPosition <= 0) {
-        headDirectionClockwise = !headDirectionClockwise;
-        currentHeadPosition++;
-      }
-      else {
-        currentHeadPosition--;
-      }
+    
+    currentHeadPosition++;
+    if (currentHeadPosition >= NUM_HEAD_POSITIONS) {
+      currentHeadPosition = 0;
     }
     
     // reset previous millis
@@ -275,4 +286,3 @@ void usReadCm() {
     usReadFlag = true;
   }
 }
-
