@@ -28,8 +28,8 @@ const unsigned long HEAD_MOVEMENT_PERIOD = 120;
 
 // head servo constants 
 const int HEAD_SERVO_PIN = 12;
-const int NUM_HEAD_POSITIONS = 6;
-const int HEAD_POSITIONS[NUM_HEAD_POSITIONS] = {178, 178, 178, 85, 85, 85}; 
+const int NUM_HEAD_POSITIONS = 8;
+const int HEAD_POSITIONS[NUM_HEAD_POSITIONS] = {172, 172, 172, 172, 85, 85, 85, 85}; 
 
 // head servo data
 boolean headDirectionClockwise = false;
@@ -67,8 +67,8 @@ const double desiredState = (double) 30;
 
 //1.5, 0, 100
 const double kp = 1;
-const double ki = 0;
-const double kd = 4;
+const double ki = 0.0;
+const double kd = 1.0;
 
 double kiTotal = 0.0;
 double priorError = 0.0;
@@ -84,7 +84,7 @@ void setup() {
 
   // initialize the head position to start
   headServo.attach(HEAD_SERVO_PIN);
-  headServo.write(90); // start at position 40
+  headServo.write(172); // start at positin 172
 
   // initialize the US pins
   pinMode(ECHO_PIN, INPUT);
@@ -112,10 +112,12 @@ void loop() {
   usReadCm();
 
   // Check if there is an object in front
-  bool objectDetected = (distanceReadings[3] < OBJECT_THRESHOLD || distanceReadings[4] < OBJECT_THRESHOLD || distanceReadings[5] < OBJECT_THRESHOLD);
+  bool objectDetected = (distanceReadings[5] < OBJECT_THRESHOLD || distanceReadings[6] < OBJECT_THRESHOLD || distanceReadings[7] < OBJECT_THRESHOLD);
 
   // If there is an object detected, apply object avoidance PID
+  objectDetected = false;
   if (objectDetected) {
+    Serial.print("OBJECT DETECTED!");
     // Object avoidance PID (if there's an object in front)
     double error = STOP_DISTANCE - distance;  // Distance we want to maintain
     double proportional = kp * error;
@@ -130,10 +132,19 @@ void loop() {
     // Apply object avoidance PID result to motors
     motors.setSpeeds(-80 + pidResult, -80 - pidResult);  // Modify as needed for your avoidance behavior
   }
-  else if (currentHeadPosition < 3) { // do wall following pid
+  else if ((currentReadPosition < 4) && (currentReadPosition > 0)) { // do wall following pid
+    
     // sideways pid
     // calculate error
-    double error = desiredState - distance;
+
+    double newDistance;
+    if(distanceReadings[currentReadPosition] > 200) {
+      newDistance = 30;
+    }
+    else {
+      newDistance = distanceReadings[currentReadPosition];
+    }
+    double error = desiredState - newDistance;
 
     // Proportional correction 
     // no time multiplier because the rate of the servo turning is constant
@@ -143,16 +154,19 @@ void loop() {
     // add error to kiTotal
     kiTotal += error;
 
+
+    if(kiTotal > 20) {
+      kiTotal = 20;
+    }
+
+    if(kiTotal < -20) {
+      kiTotal = -20;
+    }
+
     // calculate integral correction
     double integral = ki * kiTotal;
 
-    if(integral > 15) {
-      integral = 15;
-    }
-
-    if(integral < -15) {
-      integral = -15;
-    }
+    
 
     // may have to apply limits on Ki to prevent integral windup
 
@@ -170,20 +184,11 @@ void loop() {
     // one wheel will be + pidResult, the other will be - pidResult
     // positive or negative pidResult value will determine which
     // direction the robot will turn
+    
   
-    Serial.println("pidResult ");
-    Serial.println(pidResult);
     motors.setSpeeds(-80 + pidResult, -80 - pidResult);
-
   }
-  // forward PID
-  else {
-    // If the head is facing forward (positions 3, 4, 5), do nothing for PID correction
-    motors.setSpeeds(-80, -80);  // Continue moving straight backward without correction
-  }
-
-
-
+  
 }
 
 void moveHead() {
